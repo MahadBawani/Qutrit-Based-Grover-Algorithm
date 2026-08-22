@@ -307,6 +307,46 @@ def sample_effective_T1(
     inv_T1_eff = 1.0 / T1_base + (Gamma_qp if x_qp else 0.0)
     return 1.0 / inv_T1_eff
 
+# ---------------------------------------------------------------------------
+# Haupt & Egger (2023) single-axis gamma parameterization
+# ---------------------------------------------------------------------------
+# The project proposal anchors the qutrit decay ladder to specific MEASURED
+# transmon values (Haupt & Egger, Phys. Rev. A 108, 022614 (2023)):
+#     T01 = 100 us, T12 = 73 us, Gamma20 = 0 (no direct 2->0 leakage)
+# and defines a single dimensionless noise axis gamma = Gamma01, with
+# Gamma12 DERIVED from gamma so both transitions correspond to the same
+# physical gate duration tau (proposal Eq. 9-10):
+#     Gamma12 = 1 - (1-gamma)^(T01/T12)
+# This is a DIFFERENT ratio (T01/T12 = 100/73 ~ 1.370) from the generic
+# bosonic sqrt(n) scaling in transmon_T1_ladder() (which gives ratio 0.5,
+# i.e. T12 = T01/2). Both are legitimate models; this function reproduces
+# the proposal's specific citation exactly, without changing
+# transmon_T1_ladder()'s more general bosonic default.
+
+HAUPT_EGGER_T01_US = 100.0
+HAUPT_EGGER_T12_US = 73.0
+
+
+def haupt_egger_gamma_to_ladder(
+    gamma: float, T01: float = HAUPT_EGGER_T01_US, T12: float = HAUPT_EGGER_T12_US
+) -> List[float]:
+    """
+    Proposal Eq. 9-10: given the single noise axis gamma = Gamma01, derive
+    Gamma12 so both transitions share one physical gate duration tau:
+        Gamma12 = 1 - (1-gamma)^(T01/T12)
+    Returns [Gamma01, Gamma12] -- feed directly into amplitude_damping_kraus(3, ...).
+    Gamma20 = 0 (no direct 2->0 leakage) is enforced by construction: the
+    cascade-only amplitude_damping_kraus() has no 2->0 term at all, which
+    is exactly the proposal's stated assumption, not an approximation of it.
+    """
+    if not (0.0 <= gamma < 1.0):
+        raise ValueError(f"gamma must be in [0, 1), got {gamma!r}")
+    Gamma01 = gamma
+    ratio = T01 / T12
+    Gamma12 = 1.0 - (1.0 - gamma) ** ratio
+    return [Gamma01, Gamma12]
+
+
 
 # ---------------------------------------------------------------------------
 # Validation against qutip.mesolve (Section validation)
